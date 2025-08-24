@@ -1,0 +1,30 @@
+# Core dependencies
+Pillow>=10.0.0
+numpy>=1.24.0
+opencv-python>=4.8.0  # For webcam capture only
+
+# Azure SDK
+azure-ai-vision-imageanalysis>=1.0.0
+azure-identity>=1.15.0
+azure-keyvault-secrets>=4.7.0
+openai>=1.30.0
+
+# Audio processing (for speech input) - optional
+# speech-recognition>=3.10.0
+# pyaudio>=0.2.11
+
+# Async and networking
+websockets>=11.0
+
+# Configuration and utilities
+python-dotenv>=1.0.0
+# Configuration and validation
+pydantic[email]>=2.5.0
+pydantic-settings>=2.0.0
+click>=8.1.0
+
+# Development and testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0
