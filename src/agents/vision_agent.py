@@ -97,7 +97,6 @@ class VisionAgent:
             description = self._process_caption(result.caption)
             tags = self._process_tags(result.tags)
             dense_captions = self._process_dense_captions(result.dense_captions)
-            navigation_suggestions = self._generate_navigation_suggestions(result)
             
             # Log summary of what was detected
             self.logger.info(f"Analysis complete: {len(objects)} objects, {len(people)} people, {len(tags)} tags, {len(dense_captions)} captions")
@@ -108,7 +107,6 @@ class VisionAgent:
                 "description": description,
                 "tags": tags,
                 "dense_captions": dense_captions,
-                "navigation_suggestions": navigation_suggestions,
                 "timestamp": time.time() - start_time
             }
             
@@ -219,34 +217,6 @@ class VisionAgent:
                 })
         
         return captions
-    
-    def _generate_navigation_suggestions(self, result) -> List[str]:
-        """Generate navigation suggestions based on analysis results."""
-        suggestions = []
-        
-        # Check for people (safety priority)
-        if hasattr(result, 'people') and result.people and result.people.list:
-            people_count = len(result.people.list)
-            suggestions.append(f"Caution: {people_count} people detected - maintain safe distance")
-        
-        # Check for obstacles
-        if hasattr(result, 'objects') and result.objects and result.objects.list:
-            obstacle_objects = []
-            for obj in result.objects.list:
-                # In the new API, objects have tags instead of direct name
-                if obj.tags and len(obj.tags) > 0:
-                    primary_tag = obj.tags[0]
-                    if primary_tag.name.lower() in ["wall", "tree", "building", "car", "table", "chair", "pole"]:
-                        obstacle_objects.append(obj)
-            
-            if obstacle_objects:
-                suggestions.append(f"Navigate carefully around {len(obstacle_objects)} detected obstacles")
-        
-        # General navigation advice
-        if not suggestions:
-            suggestions.append("Area appears clear for normal flight operations")
-        
-        return suggestions
     
     
     def _process_query(self, analysis_results: Dict[str, Any], query: str) -> str:
