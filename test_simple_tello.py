@@ -25,17 +25,26 @@ def main():
     # First check network connectivity
     print("🌐 Checking network status...")
     import subprocess
+    import platform
     try:
-        result = subprocess.run(['ping', '-c', '1', '-W', '2000', '192.168.10.1'], 
-                              capture_output=True, timeout=3)
+        # Use different ping flags for Windows vs Unix/Linux
+        if platform.system().lower() == 'windows':
+            # Windows ping syntax
+            result = subprocess.run(['ping', '-n', '1', '-w', '2000', '192.168.10.1'], 
+                                  capture_output=True, timeout=3)
+        else:
+            # Unix/Linux/Mac ping syntax
+            result = subprocess.run(['ping', '-c', '1', '-W', '2000', '192.168.10.1'], 
+                                  capture_output=True, timeout=3)
+        
         if result.returncode == 0:
             print("✅ Connected to Tello network (192.168.10.1 reachable)")
             tello_reachable = True
         else:
             print("❌ Not connected to Tello network")
             tello_reachable = False
-    except:
-        print("⚠️  Cannot test network connectivity")
+    except Exception as e:
+        print(f"⚠️  Cannot test network connectivity: {e}")
         tello_reachable = False
     
     if not tello_reachable:

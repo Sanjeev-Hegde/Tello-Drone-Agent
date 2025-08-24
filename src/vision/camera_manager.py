@@ -26,6 +26,7 @@ class CameraManager:
         # Camera objects
         self.webcam = None
         self.tello = None
+        self.tello_frame_reader = None  # Store Tello frame reader to prevent conflicts
         
         # Frame dimensions
         self.frame_width = 640
@@ -124,9 +125,11 @@ class CameraManager:
 
     def _tello_capture_loop(self):
         """Main capture loop for Tello camera."""
-        # Start the frame reader
+        # Get the frame reader (reuse existing one)
         frame_reader = self.tello.get_frame_read()
-        frame_reader.start()
+        
+        # Store frame reader for single frame capture
+        self.tello_frame_reader = frame_reader
         
         while self.running:
             try:
@@ -139,10 +142,21 @@ class CameraManager:
                     
                     # Call frame callback if provided
                     if self.frame_callback:
-                        asyncio.run_coroutine_threadsafe(
-                            self.frame_callback(pil_image), 
-                            asyncio.get_event_loop()
-                        )
+                        try:
+                            # Create a new event loop for this thread if needed
+                            import asyncio
+                            try:
+                                loop = asyncio.get_event_loop()
+                            except RuntimeError:
+                                # No event loop in this thread, create one
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                            
+                            # Run the callback
+                            loop.run_until_complete(self.frame_callback(pil_image))
+                            
+                        except Exception as e:
+                            self.logger.error(f"Error in frame callback: {e}")
             
                 # Small delay to prevent excessive CPU usage
                 import time
@@ -155,6 +169,7 @@ class CameraManager:
         # Stop frame reader
         if frame_reader:
             frame_reader.stop()
+        self.tello_frame_reader = None
 
     def _webcam_capture_loop(self):
         """Main capture loop for webcam."""
@@ -199,9 +214,17 @@ class CameraManager:
         """Capture a single frame (for testing)."""
         try:
             if self.source == "tello" and self.tello:
-                frame_reader = self.tello.get_frame_read()
-                if frame_reader and frame_reader.frame is not None:
-                    return Image.fromarray(frame_reader.frame)
+                # Use existing frame reader if available
+                if hasattr(self, 'tello_frame_reader') and self.tello_frame_reader and self.tello_frame_reader.frame is not None:
+                    return Image.fromarray(self.tello_frame_reader.frame)
+                else:
+                    # Fallback: try to get a frame reader, but be careful not to create conflicts
+                    try:
+                        frame_reader = self.tello.get_frame_read()
+                        if frame_reader and frame_reader.frame is not None:
+                            return Image.fromarray(frame_reader.frame)
+                    except Exception as e:
+                        self.logger.debug(f"Could not get single frame from Tello: {e}")
             
             elif self.source == "webcam" and self.webcam and self.webcam.isOpened():
                 ret, frame = self.webcam.read()
@@ -231,6 +254,11 @@ class CameraManager:
         
         if self.tello:
             try:
+                # Stop frame reader first
+                if self.tello_frame_reader:
+                    self.tello_frame_reader.stop()
+                    self.tello_frame_reader = None
+                
                 self.tello.streamoff()
                 self.tello.close()
             except:

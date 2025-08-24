@@ -1,6 +1,6 @@
 """
 Tello Drone Controller.
-Interfaces with the Tello drone using the djitellopy SDK.
+Interfaces with the Tello drone using the SimpleTello SDK.
 """
 
 import logging
@@ -8,7 +8,7 @@ import asyncio
 import cv2
 import numpy as np
 from typing import Optional, Callable, Dict, Any
-from djitellopy import Tello
+from .simple_tello import SimpleTello
 import threading
 import time
 
@@ -20,7 +20,7 @@ from vision.camera_manager import CameraManager
 
 class TelloController:
     """
-    Controller for DJI Tello drone using djitellopy SDK.
+    Controller for DJI Tello drone using SimpleTello SDK.
     
     This class provides a high-level interface for drone control,
     video streaming, and safety management.
@@ -54,23 +54,27 @@ class TelloController:
         try:
             self.logger.info("Attempting to connect to Tello drone...")
             
-            self.tello = Tello()
-            self.tello.connect()
+            self.tello = SimpleTello()
+            connected = self.tello.connect()
             
-            # Check connection
-            battery = self.tello.get_battery()
-            if battery > 0:
-                self.is_connected = True
-                self.battery_level = battery
-                self.logger.info(f"Connected to Tello drone. Battery: {battery}%")
-                
-                # Start video stream if enabled
-                if self.enable_video:
-                    await self.start_video_stream()
-                
-                return True
+            if connected:
+                # Check connection by getting battery
+                battery = self.tello.get_battery()
+                if battery > 0:
+                    self.is_connected = True
+                    self.battery_level = battery
+                    self.logger.info(f"Connected to Tello drone. Battery: {battery}%")
+                    
+                    # Start video stream if enabled
+                    if self.enable_video:
+                        await self.start_video_stream()
+                    
+                    return True
+                else:
+                    self.logger.error("Failed to get battery level - connection failed")
+                    return False
             else:
-                self.logger.error("Failed to get battery level - connection failed")
+                self.logger.error("SimpleTello connection failed")
                 return False
                 
         except Exception as e:
@@ -89,7 +93,7 @@ class TelloController:
                 await self.emergency_land()
             
             if self.tello:
-                self.tello.end()
+                self.tello.close()
             
             self.is_connected = False
             self.logger.info("Disconnected from Tello drone")
@@ -153,10 +157,11 @@ class TelloController:
                 self.logger.error(f"Battery too low for takeoff: {self.battery_level}%")
                 return False
             
-            self.tello.takeoff()
-            self.is_flying = True
-            self.logger.info("Takeoff successful")
-            return True
+            success = self.tello.takeoff()
+            if success:
+                self.is_flying = True
+                self.logger.info("Takeoff successful")
+            return success
             
         except Exception as e:
             self.logger.error(f"Takeoff failed: {e}")
@@ -169,10 +174,11 @@ class TelloController:
                 self.logger.warning("Drone is not flying")
                 return True
             
-            self.tello.land()
-            self.is_flying = False
-            self.logger.info("Landing successful")
-            return True
+            success = self.tello.land()
+            if success:
+                self.is_flying = False
+                self.logger.info("Landing successful")
+            return success
             
         except Exception as e:
             self.logger.error(f"Landing failed: {e}")
@@ -189,20 +195,24 @@ class TelloController:
                 return False
             
             if direction == "forward":
-                self.tello.move_forward(distance)
+                success = self.tello.move_forward(distance)
             elif direction == "back":
-                self.tello.move_back(distance)
+                success = self.tello.move_back(distance)
             elif direction == "left":
-                self.tello.move_left(distance)
+                success = self.tello.move_left(distance)
             elif direction == "right":
-                self.tello.move_right(distance)
+                success = self.tello.move_right(distance)
             elif direction == "up":
-                self.tello.move_up(distance)
+                success = self.tello.move_up(distance)
             elif direction == "down":
-                self.tello.move_down(distance)
+                success = self.tello.move_down(distance)
+            else:
+                self.logger.error(f"Unknown direction: {direction}")
+                return False
             
-            self.logger.info(f"Moved {direction} {distance}cm")
-            return True
+            if success:
+                self.logger.info(f"Moved {direction} {distance}cm")
+            return success
             
         except Exception as e:
             self.logger.error(f"Move command failed: {e}")
@@ -218,12 +228,13 @@ class TelloController:
                 return False
             
             if angle > 0:
-                self.tello.rotate_clockwise(angle)
+                success = self.tello.rotate_clockwise(angle)
             else:
-                self.tello.rotate_counter_clockwise(abs(angle))
+                success = self.tello.rotate_counter_clockwise(abs(angle))
             
-            self.logger.info(f"Rotated {angle} degrees")
-            return True
+            if success:
+                self.logger.info(f"Rotated {angle} degrees")
+            return success
             
         except Exception as e:
             self.logger.error(f"Rotate command failed: {e}")
@@ -263,7 +274,10 @@ class TelloController:
             sleep_time = duration / steps
             
             for i in range(steps):
-                self.tello.rotate_clockwise(angle_per_step)
+                success = self.tello.rotate_clockwise(angle_per_step)
+                if not success:
+                    self.logger.error(f"Scan step {i+1} failed")
+                    return False
                 await asyncio.sleep(sleep_time)
             
             self.logger.info(f"Scan completed in {duration} seconds")
@@ -276,10 +290,11 @@ class TelloController:
     async def _emergency(self) -> bool:
         """Execute emergency command."""
         try:
-            self.tello.emergency()
-            self.is_flying = False
-            self.logger.warning("Emergency stop executed")
-            return True
+            success = self.tello.emergency()
+            if success:
+                self.is_flying = False
+                self.logger.warning("Emergency stop executed")
+            return success
             
         except Exception as e:
             self.logger.error(f"Emergency command failed: {e}")
@@ -290,8 +305,9 @@ class TelloController:
         try:
             if self.is_flying:
                 self.logger.warning("Performing emergency landing")
-                self.tello.emergency()
-                self.is_flying = False
+                success = self.tello.emergency()
+                if success:
+                    self.is_flying = False
         except Exception as e:
             self.logger.error(f"Emergency landing failed: {e}")
     
@@ -302,7 +318,11 @@ class TelloController:
                 self.logger.error("Cannot start video - drone not connected")
                 return
             
-            self.tello.streamon()
+            success = self.tello.streamon()
+            if not success:
+                self.logger.error("Failed to start video stream")
+                return
+            
             self._stop_video = False
             
             # Start video processing thread
@@ -323,7 +343,9 @@ class TelloController:
                 self.video_thread.join(timeout=5)
             
             if self.tello:
-                self.tello.streamoff()
+                success = self.tello.streamoff()
+                if not success:
+                    self.logger.warning("Failed to stop video stream cleanly")
             
             self.logger.info("Video stream stopped")
             
