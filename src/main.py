@@ -1,59 +1,168 @@
+#!/usr/bin/env python3
 """
-Enhanced main application entry point for Tello Drone AI Agent.
-Now supports user command input with vision assistance.
+Main entry point for the Tello Drone Agent.
+Uses Azure AI Agents for autonomous drone control with vision tools.
 """
 
 import asyncio
 import logging
-import signal
+import time
 import sys
 import os
-from typing import Optional, Dict, Any
-import threading
-import queue
+from typing import Optional
 
 # Add src to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import click
-from PIL import Image
-import numpy as np
+# Check for vision-only mode
+vision_only = "--vision-only" in sys.argv
 
-from config.settings import settings, setup_logging
+# Always import vision components
 from agents.vision_agent import VisionAgent
 from vision.camera_manager import CameraManager
+from config.settings import settings, setup_logging
 
-# Import drone-related modules only when needed
-ControlAgent = None
-TelloController = None
-DroneCommand = None
-DroneAction = None
+# Import the new hybrid agent
+from agents.hybrid_drone_agent import HybridDroneAgent
+
+# Conditionally import drone components for integration
+if not vision_only:
+    from drone.tello_controller import TelloController
 
 
 class TelloDroneAgent:
-    """Main application class for the Tello Drone AI Agent with command-driven interface."""
+    """Main application class using Azure AI Agents for autonomous control."""
     
-    def __init__(self, vision_only: bool = False):
+    def __init__(self, vision_analysis_enabled: bool = True):
         self.logger = logging.getLogger(__name__)
-        self.vision_only = vision_only
+        self.vision_analysis_enabled = vision_analysis_enabled
         self.running = False
         
         # Initialize components
-        self.control_agent = None
-        self.vision_agent = None
-        self.tello_controller = None
-        self.camera_manager = None
+        self.camera_manager = CameraManager()
+        self.vision_agent = VisionAgent() if vision_analysis_enabled else None
         
-        # Command queue for user input
-        self.command_queue = queue.Queue()
-        self.current_task = None
-        self.vision_analysis_enabled = False
-        self.drone_is_flying = False  # Track if drone is airborne
+        # Initialize the hybrid AI agent
+        self.hybrid_agent = HybridDroneAgent(vision_only=vision_only)
         
-        # Vision data for command execution
-        self.latest_frame = None
-        self.latest_analysis = None
+        # Drone controller (conditional)
+        if not vision_only:
+            self.tello_controller = TelloController()
+        else:
+            self.tello_controller = None
+            self.logger.info("Running in VISION-ONLY mode - no drone will be controlled")
+    
+    async def run_interactive_mode(self):
+        """Run the agent in interactive mode with AI autonomy."""
+        self.logger.info("Starting Tello Drone Agent with Azure AI Agents...")
+        self.running = True
         
+        try:
+            # Start camera
+            await self.camera_manager.start()
+            
+            print("\n🤖 Autonomous Tello Drone Agent Ready!")
+            print("💡 Give natural language commands - the AI will handle the details")
+            print("🎯 Examples:")
+            print("   • 'Take off and look around for people'")
+            print("   • 'Move forward carefully avoiding obstacles'") 
+            print("   • 'Find the best angle to view the room'")
+            print("   • 'Land safely'")
+            if vision_only:
+                print("⚠️  VISION-ONLY MODE: Using simulated drone and webcam")
+            print("=" * 70)
+            
+            while self.running:
+                try:
+                    # Get user input
+                    user_input = input("\n🎤 Tell me what to do: ").strip()
+                    
+                    if not user_input:
+                        continue
+                        
+                    if user_input.lower() in ['quit', 'exit', 'q', 'stop']:
+                        print("👋 Shutting down...")
+                        break
+                    
+                    # Process through AI agent
+                    await self.process_ai_command(user_input)
+                    
+                except KeyboardInterrupt:
+                    print("\n\n⚠️  Interrupted! Emergency landing...")
+                    break
+                except Exception as e:
+                    self.logger.error(f"Error in interactive loop: {e}")
+                    print(f"❌ Error: {e}")
+                    
+        finally:
+            await self.cleanup()
+    
+    async def process_ai_command(self, user_input: str):
+        """Process command through the autonomous AI agent."""
+        start_time = time.time()
+        
+        try:
+            print(f"\n🧠 AI Agent processing: '{user_input}'")
+            print("⏳ Thinking...")
+            
+            # Let the AI agent handle everything autonomously
+            response = await self.hybrid_agent.process_user_request(user_input)
+            
+            # Display the AI's response
+            print(f"\n🤖 AI Agent: {response}")
+                
+            # Show timing
+            elapsed = time.time() - start_time
+            print(f"⏱️  Completed in {elapsed:.2f}s")
+            
+        except Exception as e:
+            self.logger.error(f"Error processing AI command '{user_input}': {e}")
+            print(f"❌ AI Agent failed: {e}")
+    
+    async def cleanup(self):
+        """Clean up all resources."""
+        self.running = False
+        
+        try:
+            # Emergency landing through AI agent if needed
+            if not vision_only:
+                print("🚨 Requesting emergency landing...")
+                await self.hybrid_agent.process_user_request("Emergency land now for safety")
+            
+            # Stop camera
+            if self.camera_manager:
+                await self.camera_manager.stop()
+            
+            # Cleanup hybrid agent
+            if self.hybrid_agent:
+                self.hybrid_agent.cleanup()
+            
+            # Cleanup drone controller
+            if self.tello_controller:
+                self.tello_controller.cleanup()
+                
+            print("🧹 Cleanup completed")
+            
+        except Exception as e:
+            self.logger.error(f"Cleanup error: {e}")
+
+
+async def main():
+    """Main entry point."""
+    # Setup logging first
+    setup_logging()
+    
+    # Check for vision-only mode
+    vision_analysis_enabled = "--no-vision" not in sys.argv
+    
+    # Create and run agent
+    agent = TelloDroneAgent(vision_analysis_enabled=vision_analysis_enabled)
+    await agent.run_interactive_mode()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    
     async def initialize(self):
         """Initialize all components."""
         try:

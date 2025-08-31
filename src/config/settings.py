@@ -21,15 +21,14 @@ load_dotenv(env_path)
 class Settings(BaseSettings):
     """Application settings with Azure integration."""
     
-    # Azure OpenAI Configuration
-    azure_openai_endpoint: str = Field(..., env="AZURE_OPENAI_ENDPOINT")
-    azure_openai_api_key: Optional[str] = Field(None, env="AZURE_OPENAI_API_KEY")
-    azure_openai_api_version: str = Field("2024-08-01-preview", env="AZURE_OPENAI_API_VERSION")
-    azure_openai_deployment_name: str = Field("gpt-4", env="AZURE_OPENAI_DEPLOYMENT_NAME")
-    
     # Azure AI Vision Configuration
     azure_ai_vision_endpoint: str = Field(..., env="AZURE_AI_VISION_ENDPOINT")
     azure_ai_vision_key: Optional[str] = Field(None, env="AZURE_AI_VISION_KEY")
+    
+    # Azure AI Projects Configuration
+    azure_ai_project_endpoint: str = Field(..., env="AZURE_AI_PROJECT_ENDPOINT")
+    azure_ai_project_api_key: Optional[str] = Field(None, env="AZURE_AI_PROJECT_API_KEY")
+    drone_agent_id: Optional[str] = Field(None, env="DRONE_AGENT_ID")
     
     # Azure Key Vault Configuration (Optional but recommended)
     azure_key_vault_url: Optional[str] = Field(None, env="AZURE_KEY_VAULT_URL")
