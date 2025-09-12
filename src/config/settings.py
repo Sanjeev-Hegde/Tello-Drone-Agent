@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     azure_ai_project_api_key: Optional[str] = Field(None, env="AZURE_AI_PROJECT_API_KEY")
     drone_agent_id: Optional[str] = Field(None, env="DRONE_AGENT_ID")
     
+    # Azure OpenAI Configuration
+    azure_openai_endpoint: Optional[str] = Field(None, env="AZURE_OPENAI_ENDPOINT")
+    azure_openai_api_key: Optional[str] = Field(None, env="AZURE_OPENAI_API_KEY")
+    azure_openai_realtime_deployment: Optional[str] = Field(None, env="AZURE_OPENAI_REALTIME_DEPLOYMENT")
+    azure_openai_gpt4o_deployment: Optional[str] = Field(None, env="AZURE_OPENAI_GPT4O_DEPLOYMENT")
+    
     # Azure Key Vault Configuration (Optional but recommended)
     azure_key_vault_url: Optional[str] = Field(None, env="AZURE_KEY_VAULT_URL")
     

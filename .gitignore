@@ -21,12 +21,19 @@ wheels/
 *.egg
 
 # Virtual Environment
+.venv/
 venv/
 env/
 ENV/
 
 # Environment Variables
 .env
+
+# Captured drone images
+images/
+*.jpg
+*.jpeg
+*.png
 
 # IDE
 .vscode/

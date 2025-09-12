@@ -14,6 +14,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, asdict
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
+from azure.ai.agents.models import FunctionTool
 
 # Try imports with error handling
 try:
@@ -85,6 +86,9 @@ class AutonomousDroneAgent:
         self.conversation_history: List[Dict] = []
         self.image_history: List[Dict] = []
         
+        # Track background save threads
+        self.background_save_threads: List = []
+        
         # Initialize Azure AI
         self._setup_ai_client()
         
@@ -151,7 +155,7 @@ class AutonomousDroneAgent:
 
 ## CORE PRINCIPLES:
 1. **Safety First**: Always analyze the environment before moving
-2. **Small Steps**: Take incremental movements (20-50cm) to avoid crashes  
+2. **Small Steps**: Take incremental movements (20-110cm) to avoid crashes  
 3. **Vision-Guided**: Capture images before major movements to see obstacles
 4. **Rotate Before Side Movement**: Never fly left/right directly - rotate first to see direction, then move forward
 5. **Remember Context**: Use previous images and conversation to make informed decisions
@@ -228,7 +232,7 @@ You are cautious, methodical, and always prioritize safety over speed.""",
             return run_async_in_thread(self._move_down(distance))
         def rotate_clockwise(angle: int): 
             return run_async_in_thread(self._rotate_clockwise(angle))
-        def rotate_counterclockwise(angle: int): 
+        def rotate_counter_clockwise(angle: int): 
             return run_async_in_thread(self._rotate_counter_clockwise(angle))
         def get_drone_status(): 
             return self._get_drone_status()  # This is sync, no need for async runner
@@ -240,7 +244,7 @@ You are cautious, methodical, and always prioritize safety over speed.""",
         # Register tool functions for auto execution
         functions_list = [
             takeoff, land, move_forward, move_backward, move_left, move_right,
-            move_up, move_down, rotate_clockwise, rotate_counterclockwise,
+            move_up, move_down, rotate_clockwise, rotate_counter_clockwise,
             get_drone_status, capture_image_and_analyze, emergency_stop
         ]
         self.ai_client.agents.enable_auto_function_calls(functions_list)
@@ -679,7 +683,7 @@ You are cautious, methodical, and always prioritize safety over speed.""",
         if self.vision_only:
             # Simulate image analysis for testing
             analysis_results = {
-                "obstacles": "Clear path ahead for 2 meters. Wall visible in distance. No immediate obstacles.",
+                "obstacles": "There is a chair 200 cm in front. No immediate obstacles.",
                 "objects": "Table with laptop visible ahead. Chair to the right. No people detected.",
                 "navigation": "Safe to move forward 50cm. Room appears spacious. Good lighting conditions.",
                 "specific_object": f"Looking for {object_description}: Object not clearly visible in current view. May need to rotate or move closer.",
@@ -703,38 +707,118 @@ You are cautious, methodical, and always prioritize safety over speed.""",
             # Capture frame from drone camera
             frame = self.drone.get_frame()
             if frame is None:
-                return "❌ Failed to capture image - camera not available"
-            
+                return "❌ Failed to capture image - camera not available or getting initialized, try again."
+
             # Convert frame to base64 for GPT-4o vision
-            _, buffer = cv2.imencode('.jpg', frame)
+            # Fix color format: OpenCV uses BGR, but we need RGB for proper colors
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            _, buffer = cv2.imencode('.jpg', frame_rgb)
             image_base64 = base64.b64encode(buffer).decode('utf-8')
+            
+            # Prepare image filename for later saving (don't save yet)
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            image_filename = f"drone_capture_{focus}_{timestamp}.jpg"
+            image_path = os.path.join("images", image_filename)
             
             # Create analysis prompt based on focus
             prompts = {
-                "obstacles": "Analyze this drone camera view for obstacles and safety. Identify any walls, objects, or hazards in the flight path. Estimate safe distances for movement.",
-                "objects": "Identify and describe all objects visible in this drone camera view. List furniture, people, pets, and other items.",
-                "navigation": "Analyze this view for drone navigation. Identify safe directions to move, optimal paths, and any navigation hazards.",
-                "specific_object": f"Look for this specific object in the image: {object_description}. Describe if you can see it, where it is located, and how to navigate towards it.",
-                "landing_spot": "Evaluate this area for drone landing safety. Identify suitable flat surfaces and any landing hazards."
+                "obstacles": "Analyze this drone camera view for obstacles and safety. Identify any walls, objects, or hazards in the flight path. Estimate safe distances for movement in centimeters.",
+                "objects": "Identify and describe all objects visible in this drone camera view. List furniture, people, pets, and other items with their approximate locations.",
+                "navigation": "Analyze this view for drone navigation. Identify safe directions to move, optimal paths, and any navigation hazards. Provide specific movement recommendations.",
+                "specific_object": f"Look for this specific object in the image: {object_description}. Describe if you can see it, where it is located, and how to navigate towards it safely.",
+                "landing_spot": "Evaluate this area for drone landing safety. Identify suitable flat surfaces and any landing hazards. Rate the safety level from 1-10."
             }
             
             prompt = prompts.get(focus, "Analyze this drone camera view for general flight safety and navigation.")
             
-            # TODO: Integrate with actual GPT-4o vision analysis
-            # For now, return simulated analysis
-            result = f"Image captured and analyzed for {focus}. Analysis pending GPT-4o vision integration."
-            self.drone_state.last_image_analysis = result
+            # Send to GPT-4o FIRST (fast path) - don't wait for file I/O
+            analysis_result = "Image analysis pending..."
             
-            # Store in image history
+            # Call GPT-4o vision analysis using the AI client
+            try:
+                # Create a temporary thread for vision analysis
+                vision_thread = self.ai_client.agents.threads.create()
+                
+                # Send image and prompt to GPT-4o (this is the time-critical part)
+                message = self.ai_client.agents.messages.create(
+                    thread_id=vision_thread.id,
+                    role="user",
+                    content=[
+                        {
+                            "type": "text",
+                            "text": prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        }
+                    ]
+                )
+                
+                # Process with vision-capable agent
+                run = self.ai_client.agents.runs.create_and_process(
+                    thread_id=vision_thread.id,
+                    agent_id=self.agent.id
+                )
+                
+                # Get vision analysis response
+                messages = self.ai_client.agents.messages.list(
+                    thread_id=vision_thread.id,
+                    limit=1,
+                    order="desc"
+                )
+                
+                message_list = list(messages)
+                if message_list and hasattr(message_list[0], 'content'):
+                    analysis_result = message_list[0].content[0].text.value
+                else:
+                    analysis_result = f"Image analyzed for {focus} - detailed analysis completed"
+                
+                # Cleanup temporary thread
+                try:
+                    self.ai_client.agents.threads.delete(vision_thread.id)
+                except:
+                    pass  # Ignore cleanup errors
+                
+            except Exception as vision_error:
+                self.logger.warning(f"⚠️ GPT-4o vision analysis failed: {vision_error}")
+                analysis_result = f"Image captured for {focus} analysis. Vision API temporarily unavailable - using basic analysis."
+            
+            # NOW save the image AFTER getting AI response (async in background)
+            def save_image_async():
+                try:
+                    os.makedirs("images", exist_ok=True)
+                    # Save the RGB corrected version for consistent colors
+                    cv2.imwrite(image_path, frame_rgb)
+                    self.logger.info(f"📁 Image saved: {image_path}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Failed to save image: {e}")
+            
+            # Start background save (non-blocking)
+            import threading
+            save_thread = threading.Thread(target=save_image_async, daemon=True)
+            save_thread.start()
+            
+            # Keep track of background threads for cleanup
+            self.background_save_threads.append(save_thread)
+            
+            # Store analysis result
+            self.drone_state.last_image_analysis = analysis_result
+            
+            # Store in image history with local file path
             self.image_history.append({
                 "timestamp": time.time(),
                 "focus": focus,
-                "analysis": result,
+                "analysis": analysis_result,
                 "object_description": object_description,
+                "image_path": image_path,
                 "image_data": image_base64[:100] + "..."  # Store truncated for memory
             })
             
-            return f"✅ Image Analysis ({focus}): {result}"
+            return f"✅ Image Analysis ({focus}): {analysis_result}\n� Saving: {image_path} (background)"
             
         except Exception as e:
             return f"❌ Image capture error: {str(e)}"
@@ -822,30 +906,50 @@ You are cautious, methodical, and always prioritize safety over speed.""",
         self.logger.info("🧹 Starting cleanup...")
         
         try:
+            # Wait for background save threads to complete
+            if hasattr(self, 'background_save_threads'):
+                self.logger.info(f"⏳ Waiting for {len(self.background_save_threads)} background save threads...")
+                for thread in self.background_save_threads:
+                    if thread.is_alive():
+                        thread.join(timeout=5)  # Wait max 5 seconds per thread
+                self.logger.info("✅ Background threads completed")
+            
             # Clean up drone
             if self.drone and not self.vision_only:
                 try:
                     if self.drone_state.is_flying:
                         self.logger.info("Landing drone before cleanup...")
                         self.drone.land()
-                    self.drone.close()
+                        time.sleep(2)  # Wait for landing to complete
+                    
+                    # Safely close drone connection
+                    try:
+                        self.drone.streamoff()
+                    except Exception as e:
+                        self.logger.warning(f"Stream off warning (ignored): {e}")
+                    
+                    try:
+                        self.drone.end()
+                    except Exception as e:
+                        self.logger.warning(f"Drone end warning (ignored): {e}")
+                        
                 except Exception as e:
                     self.logger.warning(f"Drone cleanup warning: {e}")
             
-            # Clean up Azure AI resources
-            if self.thread:
-                try:
-                    self.ai_client.agents.threads.delete(self.thread.id)
-                    self.logger.info(f"Deleted thread: {self.thread.id}")
-                except Exception as e:
-                    self.logger.warning(f"Thread cleanup warning: {e}")
-                    
-            if self.agent:
-                try:
-                    self.ai_client.agents.delete_agent(self.agent.id)
-                    self.logger.info(f"Deleted agent: {self.agent.id}")
-                except Exception as e:
-                    self.logger.warning(f"Agent cleanup warning: {e}")
+            # Clean up Azure AI resources - COMMENTED OUT FOR AGENT REUSE
+            # if self.thread:
+            #     try:
+            #         self.ai_client.agents.threads.delete(self.thread.id)
+            #         self.logger.info(f"Deleted thread: {self.thread.id}")
+            #     except Exception as e:
+            #         self.logger.warning(f"Thread cleanup warning: {e}")
+            #         
+            # if self.agent:
+            #     try:
+            #         self.ai_client.agents.delete_agent(self.agent.id)
+            #         self.logger.info(f"Deleted agent: {self.agent.id}")
+            #     except Exception as e:
+            #         self.logger.warning(f"Agent cleanup warning: {e}")
                 
             self.logger.info("✅ Cleanup completed")
             

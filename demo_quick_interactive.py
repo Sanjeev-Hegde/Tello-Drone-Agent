@@ -45,7 +45,8 @@ async def quick_interactive_demo():
         
         # Create agent (will reuse if DRONE_AGENT_ID is set)
         print("\n📡 Creating agent...")
-        agent = autonomous_module.AutonomousDroneAgent(vision_only=True)
+        # agent = autonomous_module.AutonomousDroneAgent(vision_only=True)
+        agent = autonomous_module.AutonomousDroneAgent()
         print("✅ Agent ready!")
         
         # Show if we're reusing an agent
@@ -55,13 +56,25 @@ async def quick_interactive_demo():
         else:
             print(f"🆕 New agent: {agent.agent.id[:8]}...")
         
-        # Just 3 essential commands
-        commands = [
-            "Take off and check your status",
-            "Capture an image and analyze what you see",
-            "Land safely"
-        ]
-        
+
+        # commands = [
+        #     "Take off and check your status",
+        #     "Get status every 5 sec for 15 sec",
+        #     "Land safely"
+        # ]
+        # commands = [
+        #     "Take off and check your status.",
+        #     "Move forward 80cm.",
+        #     "Rotate clockwise 360 degrees.",
+        #     "Land safely."
+        # ]
+        # commands = [
+        #     ("You need to Take off move in square pattern (of 100 cm) clockwise "
+        #      "and come back to same position and facing same direction as take off and then land safely."
+        #      "between each movement pause for 2 sec.")
+        # ]
+        commands = ["Capture photo only once, analyze and tell what you see and give the response back."]
+
         for i, command in enumerate(commands, 1):
             print(f"\n📝 Command {i}/3: '{command}'")
             print("🔄 Processing...", end="", flush=True)
