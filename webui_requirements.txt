@@ -1,0 +1,4 @@
+# Additional requirements for web-enabled drone agent
+python-socketio>=5.8.0
+aiohttp>=3.8.0
+aiohttp-cors>=0.7.0

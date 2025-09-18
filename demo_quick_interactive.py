@@ -18,7 +18,7 @@ spec = importlib.util.spec_from_file_location(
     "autonomous_drone_agent", 
     os.path.join(os.path.dirname(__file__), 'src', 'agents', 'autonomous_drone_agent.py')
 )
-autonomous_module = importlib.util.module_from_spec(spec)
+python web_drone_agent.py = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(autonomous_module)
 
 # Set up clean logging - suppress Azure noise

@@ -356,7 +356,8 @@ class TelloController:
         """Video processing loop (runs in separate thread)."""
         while not self._stop_video:
             try:
-                frame = self.tello.get_frame_read().frame
+                # Use the get_frame method which handles errors properly
+                frame = self.tello.get_frame()
                 if frame is not None:
                     self.current_frame = frame
                     
