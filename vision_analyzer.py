@@ -33,10 +33,10 @@ class VisionAnalyzer:
         
         # Simulation responses for vision-only mode
         self.simulation_analyses = {
-            "obstacles": "a chair 200 cm ahead.",
-            "objects": "I can see a desk with computer monitor and laptop. Some cables and office equipment visible. No people in view.",
-            "navigation": "Room appears spacious with good lighting. Safe to move forward up to 1.5 meters before encountering furniture.",
-            "landing_spot": "Current area has flat surface suitable for landing. No obstacles directly below."
+            "obstacles": "No Objects for upto 1.5 meters",
+            "objects": "No Objects for upto 1.5 meters",
+            "navigation": "No Objects for upto 1.5 meters",
+            "landing_spot": "No Objects for upto 1.5 meters"
         }
     
     def set_websocket(self, websocket):

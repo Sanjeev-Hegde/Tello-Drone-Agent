@@ -238,41 +238,33 @@ function App() {
         </div>
 
         {/* Top Row: Video Stream and System Logs */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className={`grid gap-6 mb-6 ${videoStreamingEnabled ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
           
-          {/* Video Stream */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-            <div className="flex items-center space-x-2 mb-4">
-              <Camera className="w-5 h-5 text-white" />
-              <h2 className="text-xl font-semibold text-white">Live Video Stream</h2>
-            </div>
-            <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '4/3' }}>
-              {videoStreamingEnabled && videoFrame ? (
-                <img 
-                  src={videoFrame} 
-                  alt="Drone video stream" 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-white/60">
-                  <div className="text-center">
-                    {videoStreamingEnabled ? (
-                      <>
-                        <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>Waiting for video stream...</p>
-                      </>
-                    ) : (
-                      <>
-                        <VideoOff className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>Video streaming disabled</p>
-                        <p className="text-sm mt-1">Enable in Quick Controls</p>
-                      </>
-                    )}
+          {/* Video Stream - conditionally rendered */}
+          {videoStreamingEnabled && (
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <div className="flex items-center space-x-2 mb-4">
+                <Camera className="w-5 h-5 text-white" />
+                <h2 className="text-xl font-semibold text-white">Live Video Stream</h2>
+              </div>
+              <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '4/3' }}>
+                {videoStreamingEnabled && videoFrame ? (
+                  <img 
+                    src={videoFrame} 
+                    alt="Drone video stream" 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-white/60">
+                    <div className="text-center">
+                      <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>Waiting for video stream...</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* System Logs */}
           <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
